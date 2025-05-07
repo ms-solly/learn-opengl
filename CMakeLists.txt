@@ -11,9 +11,11 @@ find_package(PkgConfig REQUIRED)
 pkg_search_module(GLFW REQUIRED glfw3)
 
 include_directories(
-    ${GLEW_INCLUDE_DIRS}
-    ${GLFW_INCLUDE_DIRS}
-    ${OPENGL_INCLUDE_DIRS}
+    /usr/include/GL/
+    /usr/include/glad/
+    /usr/include/GLFW/
+    /usr/include/openpgl/
+    
 )
 
 target_link_libraries(window

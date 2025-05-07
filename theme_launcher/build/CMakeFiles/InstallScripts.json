@@ -1,0 +1,7 @@
+{
+	"InstallScripts" : 
+	[
+		"/home/ghost/learn/opengl/theme_launcher/build/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

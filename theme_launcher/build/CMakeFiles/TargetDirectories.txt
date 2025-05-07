@@ -1,0 +1,3 @@
+/home/ghost/learn/opengl/theme_launcher/build/CMakeFiles/window.dir
+/home/ghost/learn/opengl/theme_launcher/build/CMakeFiles/edit_cache.dir
+/home/ghost/learn/opengl/theme_launcher/build/CMakeFiles/rebuild_cache.dir
