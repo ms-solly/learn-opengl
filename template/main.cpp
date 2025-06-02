@@ -7,6 +7,21 @@
 #include<string.h>
 #include <math.h>
 
+
+int initialize();
+int init_shaders();
+int init_geometry();
+int init_textures();
+int update();
+int cleanup();
+
+SDL_Window    *window = NULL;
+SDL_GLContext context;
+unsigned int  vao, vbo, ebo, tex;
+//unsigned int  vert_shader,frag_shader;
+unsigned int shader_prog;
+
+
 void load_identity(float *m){
 
     memset(m, 0, sizeof(float) * 16);
@@ -61,11 +76,7 @@ m[14] = tz;
 
 }
 
-SDL_Window    *window = NULL;
-SDL_GLContext context;
-unsigned int  vao, vbo, ebo, tex;
-//unsigned int  vert_shader,frag_shader;
-unsigned int shader_prog;
+
 
 const GLfloat cube_verts[] = {
 
@@ -120,15 +131,12 @@ char *read_file(const char* filepath){
     assert(rc == (size_t)length && "Incomplete file read!");
     fclose(file);
 
+    sh_buffer[length] = '\0'; 
+
     return sh_buffer;
 }
 
-int initialize();
-int update();
-int cleanup();
-int init_shaders();
-int init_geometry();
-int init_textures();
+
 
 static unsigned int compile_shader(unsigned int type, const char* source){
 
@@ -164,6 +172,10 @@ static unsigned int create_shader(const char* vertex_shader, const char* fragmen
 
     unsigned int prog = glCreateProgram();
     assert(prog && "Failed to create shader program");
+
+    printf("Vertex Shader:\n%s\n", vertex_shader);
+    printf("Fragment Shader:\n%s\n", fragment_shader);
+
 
     unsigned int vs   = compile_shader(GL_VERTEX_SHADER,vertex_shader);
     assert(vs && "vertex shader compilation failed.");
