@@ -1,17 +1,82 @@
-#include <SDL2/SDL.h>
 #include <GL/glew.h>
+#include <GL/gl.h>
+#include <SDL2/SDL_opengl.h>
+#include <SDL2/SDL.h>
 #include <stdio.h>
 #include<assert.h>
 #include<string.h>
+#include <math.h>
+
+void LoadIdentity(float *m) {
+    memset(m, 0, sizeof(float) * 16);
+    m[0] = m[5] = m[10] = m[15] = 1.0f;
+}
+
+void Perspective(float *m, float fovy, float aspect, float nearZ, float farZ) {
+    float f = 1.0f / tanf(fovy * 0.5f);
+    LoadIdentity(m);
+    m[0] = f / aspect;
+    m[5] = f;
+    m[10] = (farZ + nearZ) / (nearZ - farZ);
+    m[11] = -1.0f;
+    m[14] = (2.0f * farZ * nearZ) / (nearZ - farZ);
+    m[15] = 0.0f;
+}
+
+void RotateY(float *m, float angle) {
+    LoadIdentity(m);
+    float c = cosf(angle), s = sinf(angle);
+    m[0] = c;
+    m[2] = s;
+    m[5] = 1.0f;
+    m[8] = -s;
+    m[10] = c;
+    m[15] = 1.0f;
+}
 
 
-SDL_Window    *a_window;
-SDL_GLContext a_context;
-unsigned int  a_vao, a_vbo, a_ebo, a_tex;
-unsigned int  m_vert_shader;
-unsigned int  m_frag_shader;
-unsigned int  m_shader_prog;
+SDL_Window    *window = NULL;
+SDL_GLContext context;
+unsigned int  vao, vbo, ebo, tex;
+unsigned int  vert_shader,frag_shader, shader_prog;
 
+const GLfloat cube_verts[] = {
+    -0.5f, -0.5f, 0.5f,
+     0.5f, -0.5f, 0.5f,
+     0.5f,  0.5f, 0.5f,
+    -0.5f,  0.5f, 0.5f,
+
+    -0.5f, -0.5f, -0.5f,
+     0.5f, -0.5f, -0.5f,
+     0.5f,  0.5f, -0.5f,
+    -0.5f,  0.5f, -0.5f,
+
+    -0.5f,  0.5f,  0.5f,
+     0.5f,  0.5f,  0.5f,
+     0.5f,  0.5f, -0.5f,
+    -0.5f,  0.5f, -0.5f,
+
+    -0.5f, -0.5f,  0.5f,
+     0.5f, -0.5f,  0.5f,
+     0.5f, -0.5f, -0.5f,
+    -0.5f, -0.5f, -0.5f,
+
+     0.5f, -0.5f,  0.5f,
+     0.5f, -0.5f, -0.5f,
+     0.5f,  0.5f, -0.5f,
+     0.5f,  0.5f,  0.5f,
+
+    -0.5f, -0.5f,  0.5f,
+    -0.5f, -0.5f, -0.5f,
+    -0.5f,  0.5f, -0.5f,
+    -0.5f,  0.5f,  0.5f
+};
+
+const GLuint cube_indices[] = {
+    0, 1, 1, 2, 2, 3, 3, 0,
+    4, 5, 5, 6, 6, 7, 7, 4,
+    0, 4, 1, 5, 2, 6, 3, 7
+};
 
 int Initialize();
 int Update();
@@ -21,10 +86,10 @@ int InitGeometry();
 int InitTextures();
 
 static unsigned int Compile_Shader(unsigned int type, const char* source){
-    unsigned  int id = glCreateShader(GL_VERTEX_SHADER);
+    unsigned  int id = glCreateShader(type);
     assert(id != 0 && "Failed to create shader");
     const char* src  = &source[0];
-    glShaderSource(id, 1, &src,nullptr );
+    glShaderSource(id, 1, &src,NULL);
     glCompileShader(id);
 
 
@@ -32,19 +97,21 @@ static unsigned int Compile_Shader(unsigned int type, const char* source){
     int result ;
     glGetShaderiv(id, GL_COMPILE_STATUS,&result);
 
-    if(!result){
-        int length;
-        glGetShaderiv(id, GL_INFO_LOG_LENGTH, &length);
-        // char message[length];
-        char* message = (char*)alloca(length * sizeof(char));
-        glGetShaderInfoLog(id, length, &length, message);
-        char* errtype = type == GL_VERTEX_SHADER  ? "vertex" : "fragmet";
-        fprintf(stderr,"failed to compile");
-        printf("%s shader/n %s/n", errtype, message);
+    if(result != GL_TRUE){
+        char err_buff[512];
+        glGetShaderInfoLog(id, sizeof(err_buff), NULL, err_buff);
+        err_buff[sizeof(err_buff) - 1] = '\0';
+
+        const char* type_str = type == GL_VERTEX_SHADER ? "Vertex" :
+                               type == GL_FRAGMENT_SHADER ? "Fragment" : "Unknown";
+
+        fprintf(stderr, "%s shader compilation failed:\n%s\n", type_str, err_buff);
+
         glDeleteShader(id);
 
         return 0;
     }
+
 
     return id;
 
@@ -54,8 +121,10 @@ static unsigned int Create_Shader(const char* vertex_shader, const char* fragmen
 
     unsigned int prog = glCreateProgram();
     assert(prog && "Failed to create shader program");
+
     unsigned int vs   = Compile_Shader(GL_VERTEX_SHADER,vertex_shader);
     assert(vs && "vertex shader compilation failed.");
+    
     unsigned int fs   = Compile_Shader(GL_FRAGMENT_SHADER,fragment_shader);
     assert(fs && "fragment shader compilation failed.");
 
@@ -71,43 +140,23 @@ static unsigned int Create_Shader(const char* vertex_shader, const char* fragmen
 
 }
 
-
-
-
 const char *vert_shader_src = "\
-#version 150 core                                                            \n\
-in vec2 in_Position;                                                         \n\
-in vec2 in_Texcoord;                                                         \n\
-out vec2 Texcoord;                                                           \n\
-void main()                                                                  \n\
-{                                                                            \n\
-    Texcoord = in_Texcoord;                                                  \n\
-    gl_Position = vec4(in_Position, 0.0, 1.0);                               \n\
-}                                                                            \n\
+#version 150 core\n\
+in vec3 in_Position;\n\
+uniform mat4 u_MVP;\n\
+void main() {\n\
+    gl_Position = u_MVP * vec4(in_Position, 1.0);\n\
+}\n\
 ";
 
 const char *frag_shader_src = "\
-#version 150 core                                                            \n\
-in vec2 Texcoord;                                                            \n\
-out vec4 out_Color;                                                          \n\
-uniform sampler2D tex;                                                       \n\
-void main()                                                                  \n\
-{                                                                            \n\
-    out_Color = texture(tex, Texcoord);                                      \n\
-}                                                                            \n\
+#version 150 core\n\
+out vec4 out_Color;\n\
+void main() {\n\
+    out_Color = vec4(0.0, 0.8, 1.0, 1.0);\n\
+}\n\
 ";
 
-const GLfloat verts[6][4] = {
-    //  x      y      s      t
-    { -1.0f, -1.0f,  0.0f,  1.0f }, // BL
-    { -1.0f,  1.0f,  0.0f,  0.0f }, // TL
-    {  1.0f,  1.0f,  1.0f,  0.0f }, // TR
-    {  1.0f, -1.0f,  1.0f,  1.0f }, // BR
-};
-
-const GLint indicies[] = {
-    0, 1, 2, 0, 2, 3
-};
 
 /*
  * Basic Initialization
@@ -121,13 +170,13 @@ int Initialize()
     }
 
     // Create main window
-    m_window = SDL_CreateWindow(
+    window = SDL_CreateWindow(
         "SDL App",
         SDL_WINDOWPOS_CENTERED,
         SDL_WINDOWPOS_CENTERED,
         640, 480,
         SDL_WINDOW_OPENGL);
-    if (m_window == NULL) {
+    if (window == NULL) {
         fprintf(stderr, "Failed to create main window\n");
         SDL_Quit();
         return 1;
@@ -141,10 +190,10 @@ int Initialize()
         SDL_GL_CONTEXT_PROFILE_CORE);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 
-    m_context = SDL_GL_CreateContext(m_window);
-    if (m_context == NULL) {
+    context = SDL_GL_CreateContext(window);
+    if (context == NULL) {
         fprintf(stderr, "Failed to create GL context\n");
-        SDL_DestroyWindow(m_window);
+        SDL_DestroyWindow(window);
         SDL_Quit();
         return 1;
     }
@@ -157,15 +206,15 @@ int Initialize()
     err = glewInit();
     if (err != GLEW_OK) {
         fprintf(stderr, "Failed to init GLEW\n");
-        SDL_GL_DeleteContext(m_context);
-        SDL_DestroyWindow(m_window);
+        SDL_GL_DeleteContext(context);
+        SDL_DestroyWindow(window);
         SDL_Quit();
         return 1;
     }
 
     InitShaders();
     InitGeometry();
-    InitTextures();
+   //  InitTextures();
 
     return 0;
 }
@@ -175,45 +224,20 @@ int Initialize()
  */
 int InitShaders()
 {
-    GLint status;
-    char err_buf[512];
+    
+    glGenVertexArrays(1, &vao);
+    glBindVertexArray(vao);
 
-    glGenVertexArrays(1, &m_vao);
-    glBindVertexArray(m_vao);
-
-    // Compile vertex shader
-    m_vert_shader = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(m_vert_shader, 1, &vert_shader_src, NULL);
-    glCompileShader(m_vert_shader);
-    glGetShaderiv(m_vert_shader, GL_COMPILE_STATUS, &status);
-    if (status != GL_TRUE) {
-        glGetShaderInfoLog(m_vert_shader, sizeof(err_buf), NULL, err_buf);
-        err_buf[sizeof(err_buf)-1] = '\0';
-        fprintf(stderr, "Vertex shader compilation failed: %s\n", err_buf);
+    // create & Compile vertex shader
+    shader_prog = Create_Shader(vert_shader_src, frag_shader_src);
+    if (!shader_prog) {
+        fprintf(stderr, "Shader program creation failed.\n");
         return 1;
     }
 
-    // Compile fragment shader
-    m_frag_shader = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(m_frag_shader, 1, &frag_shader_src, NULL);
-    glCompileShader(m_frag_shader);
-    glGetShaderiv(m_frag_shader, GL_COMPILE_STATUS, &status);
-    if (status != GL_TRUE) {
-        glGetShaderInfoLog(m_frag_shader, sizeof(err_buf), NULL, err_buf);
-        err_buf[sizeof(err_buf)-1] = '\0';
-        fprintf(stderr, "Fragment shader compilation failed: %s\n", err_buf);
-        return 1;
-    }
-
-    // Link vertex and fragment shaders
-    m_shader_prog = glCreateProgram();
-    glAttachShader(m_shader_prog, m_vert_shader);
-    glAttachShader(m_shader_prog, m_frag_shader);
-    glBindFragDataLocation(m_shader_prog, 0, "out_Color");
-    glLinkProgram(m_shader_prog);
-    glUseProgram(m_shader_prog);
-
-    return 0;
+    glUseProgram(shader_prog);
+    
+      return 0;
 }
 
 /*
@@ -222,38 +246,43 @@ int InitShaders()
 int InitGeometry()
 {
     // Populate vertex buffer
-    glGenBuffers(1, &m_vbo);
-    glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STATIC_DRAW);
+    glGenBuffers(1, &vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(cube_verts), cube_verts, GL_STATIC_DRAW);
 
     // Populate element buffer
-    glGenBuffers(1, &m_ebo);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_ebo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indicies), indicies, GL_STATIC_DRAW);
+    glGenBuffers(1, &ebo);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(cube_indices), cube_indices, GL_STATIC_DRAW);
 
     // Bind vertex position attribute
-    GLint pos_attr_loc = glGetAttribLocation(m_shader_prog, "in_Position");
-    glVertexAttribPointer(pos_attr_loc, 2, GL_FLOAT, GL_FALSE, 4*sizeof(GLfloat), (void*)0);
+    GLint pos_attr_loc = glGetAttribLocation(shader_prog, "in_Position");
+    if (pos_attr_loc == -1) {
+        fprintf(stderr, "Could not find 'in_Position' attribute\n");
+        return 1;
+    }    
+    glVertexAttribPointer(pos_attr_loc, 3, GL_FLOAT, GL_FALSE, 3*sizeof(GLfloat), (void*)0);
     glEnableVertexAttribArray(pos_attr_loc);
 
-    // Bind vertex texture coordinate attribute
-    GLint tex_attr_loc = glGetAttribLocation(m_shader_prog, "in_Texcoord");
+/*
+    //  Bind vertex texture coordinate attribute
+    GLint tex_attr_loc = glGetAttribLocation(shader_prog, "in_Texcoord");
     glVertexAttribPointer(tex_attr_loc, 2, GL_FLOAT, GL_FALSE, 4*sizeof(GLfloat), (void*)(2*sizeof(GLfloat)));
     glEnableVertexAttribArray(tex_attr_loc);
-
+*/ 
     return 0;
 }
 
 /*
  * Initialize textures
- */
+
 int InitTextures()
 {
-    glGenTextures(1, &m_tex);
+    glGenTextures(1, &tex);
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, m_tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 256, 256, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
-    glUniform1i(glGetUniformLocation(m_shader_prog, "tex"), 0);
+    glUniform1i(glGetUniformLocation(shader_prog, "tex"), 0);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,     GL_CLAMP_TO_BORDER);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,     GL_CLAMP_TO_BORDER);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -263,6 +292,8 @@ int InitTextures()
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     return 0;
 }
+*/
+
 
 /*
  * Free resources
@@ -271,17 +302,13 @@ int Cleanup()
 {
     glUseProgram(0);
     glDisableVertexAttribArray(0);
-    glDetachShader(m_shader_prog, m_vert_shader);
-    glDetachShader(m_shader_prog, m_frag_shader);
-    glDeleteProgram(m_shader_prog);
-    glDeleteShader(m_vert_shader);
-    glDeleteShader(m_frag_shader);
-    glDeleteTextures(1, &m_tex);
-    glDeleteBuffers(1, &m_ebo);
-    glDeleteBuffers(1, &m_vbo);
-    glDeleteVertexArrays(1, &m_vao);
-    SDL_GL_DeleteContext(m_context);
-    SDL_DestroyWindow(m_window);
+    glDeleteProgram(shader_prog);
+ // glDeleteTextures(1, &tex);
+    glDeleteBuffers(1, &ebo);
+    glDeleteBuffers(1, &vbo);
+    glDeleteVertexArrays(1, &vao);
+    SDL_GL_DeleteContext(context);
+    SDL_DestroyWindow(window);
     SDL_Quit();
     return 0;
 }
@@ -289,12 +316,40 @@ int Cleanup()
 /*
  * Render a frame
  */
+
 int Update()
 {
-    glClearColor(1.0f, 0.0f, 0.0f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
-    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, NULL);
-    SDL_GL_SwapWindow(m_window);
+    glClearColor(0.1f, 0.1f, 0.15f, 1.0f);
+    glEnable(GL_DEPTH_TEST);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    glBindVertexArray(vao);
+    glUseProgram(shader_prog);
+
+    static float angle = 0.0f;
+    angle += 0.01f;
+
+    float proj[16], rot[16], mvp[16];
+    Perspective(proj, 45.0f * M_PI / 180.0f, 640.0f/480.0f, 0.1f, 100.0f);
+    RotateY(rot, angle);
+
+    // Multiply MVP = proj * rot
+    // Naive 4x4 matrix multiply
+    for (int row = 0; row < 4; ++row) {
+        for (int col = 0; col < 4; ++col) {
+            mvp[row * 4 + col] = 0.0f;
+            for (int k = 0; k < 4; ++k) {
+                mvp[row * 4 + col] += proj[row * 4 + k] * rot[k * 4 + col];
+            }
+        }
+    }
+
+    GLint loc = glGetUniformLocation(shader_prog, "u_MVP");
+    glUniformMatrix4fv(loc, 1, GL_FALSE, mvp);
+
+    glDrawElements(GL_LINES, sizeof(cube_indices)/sizeof(GLuint), GL_UNSIGNED_INT, 0);
+
+    SDL_GL_SwapWindow(window);
     return 0;
 }
 
