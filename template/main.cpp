@@ -249,18 +249,23 @@ int initialize(){
  */
 int init_shaders(){
 
-    char* vert_shader_src = read_file("../res/shaders/vertex.glsl");
-    char* frag_shader_src = read_file("../res/shaders/fragment.glsl");
+    char* vert_src = read_file("res/shaders/vertex.glsl");
+    char* frag_src = read_file("res/shaders/fragment.glsl");
 
-    if (!vert_shader_src || !frag_shader_src) {
+    if (!vert_src || !frag_src) {
         fprintf(stderr, "failed shader loadig (init_shader)\n");
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, 
+                                 "Shader Error", 
+                                 "Failed to load shader files", 
+                                 window);
+    exit(1);
     }
 
     glGenVertexArrays(1, &vao);
     glBindVertexArray(vao);
 
     // create & Compile vertex shader
-    shader_prog = create_shader(vert_shader_src, frag_shader_src);
+    shader_prog = create_shader(vert_src, frag_src);
     if (!shader_prog) {
         fprintf(stderr, "Shader program creation failed.\n");
         return 1;
@@ -270,8 +275,8 @@ int init_shaders(){
         printf("OpenGL error: %d\n", err);
     }
     glUseProgram(shader_prog);
-    free(vert_shader_src);
-    free(frag_shader_src);
+    free(vert_src);
+    free(frag_src);
 
     return 0;
 }
