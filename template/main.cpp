@@ -7,14 +7,16 @@
 #include<string.h>
 #include <math.h>
 
-void LoadIdentity(float *m) {
+void load_identity(float *m){
+
     memset(m, 0, sizeof(float) * 16);
     m[0] = m[5] = m[10] = m[15] = 1.0f;
 }
 
-void Perspective(float *m, float fovy, float aspect, float nearZ, float farZ) {
+void perspective(float *m, float fovy, float aspect, float nearZ, float farZ){
+
     float f = 1.0f / tanf(fovy * 0.5f);
-    LoadIdentity(m);
+    load_identity(m);
     m[0] = f / aspect;
     m[5] = f;
     m[10] = (farZ + nearZ) / (nearZ - farZ);
@@ -23,8 +25,9 @@ void Perspective(float *m, float fovy, float aspect, float nearZ, float farZ) {
     m[15] = 0.0f;
 }
 
-void RotateY(float *m, float angle) {
-    LoadIdentity(m);
+void rotate_Y(float *m, float angle){
+
+    load_identity(m);
     float c = cosf(angle), s = sinf(angle);
     m[0] = c;
     m[2] = s;
@@ -33,14 +36,39 @@ void RotateY(float *m, float angle) {
     m[10] = c;
     m[15] = 1.0f;
 }
+void multiply_matrices(float *result, const float *a, const float *b) {
 
+    for (int row = 0; row < 4; ++row) {
+        for (int col = 0; col < 4; ++col) {
+            float sum = 0.0f;
+            for (int k = 0; k < 4; ++k) {
+                sum += a[row * 4 + k] * b[k * 4 + col];
+            }
+            result[row * 4 + col] = sum;
+        }
+    }
+}
+
+void translate(float *m, float tx, float ty, float tz) {
+
+load_identity(m);
+
+m[12] = tx;
+
+m[13] = ty;
+
+m[14] = tz;
+
+}
 
 SDL_Window    *window = NULL;
 SDL_GLContext context;
 unsigned int  vao, vbo, ebo, tex;
-unsigned int  vert_shader,frag_shader, shader_prog;
+//unsigned int  vert_shader,frag_shader;
+unsigned int shader_prog;
 
 const GLfloat cube_verts[] = {
+
     -0.5f, -0.5f, 0.5f,
      0.5f, -0.5f, 0.5f,
      0.5f,  0.5f, 0.5f,
@@ -73,38 +101,53 @@ const GLfloat cube_verts[] = {
 };
 
 const GLuint cube_indices[] = {
+
     0, 1, 1, 2, 2, 3, 3, 0,
     4, 5, 5, 6, 6, 7, 7, 4,
     0, 4, 1, 5, 2, 6, 3, 7
 };
 
-int Initialize();
-int Update();
-int Cleanup();
-int InitShaders();
-int InitGeometry();
-int InitTextures();
+char *read_file(const char* filepath){
 
-static unsigned int Compile_Shader(unsigned int type, const char* source){
+    FILE* file = fopen(filepath, "rb");
+    assert(file && "failed to access shader file");
+    fseek(file, 0, SEEK_END);
+    long length = ftell(file);
+    fseek(file, 0, SEEK_SET);
+    char* sh_buffer = (char*)malloc(length + 1);
+    assert(sh_buffer !=NULL && "Memory allocation failed");
+    size_t rc = fread(sh_buffer, 1, length, file);
+    assert(rc == (size_t)length && "Incomplete file read!");
+    fclose(file);
+
+    return sh_buffer;
+}
+
+int initialize();
+int update();
+int cleanup();
+int init_shaders();
+int init_geometry();
+int init_textures();
+
+static unsigned int compile_shader(unsigned int type, const char* source){
+
     unsigned  int id = glCreateShader(type);
     assert(id != 0 && "Failed to create shader");
     const char* src  = &source[0];
     glShaderSource(id, 1, &src,NULL);
     glCompileShader(id);
 
-
     //Error handling
     int result ;
     glGetShaderiv(id, GL_COMPILE_STATUS,&result);
 
-    if(result != GL_TRUE){
+    if(result != GL_TRUE) {
         char err_buff[512];
         glGetShaderInfoLog(id, sizeof(err_buff), NULL, err_buff);
         err_buff[sizeof(err_buff) - 1] = '\0';
-
         const char* type_str = type == GL_VERTEX_SHADER ? "Vertex" :
                                type == GL_FRAGMENT_SHADER ? "Fragment" : "Unknown";
-
         fprintf(stderr, "%s shader compilation failed:\n%s\n", type_str, err_buff);
 
         glDeleteShader(id);
@@ -117,15 +160,15 @@ static unsigned int Compile_Shader(unsigned int type, const char* source){
 
 } 
 
-static unsigned int Create_Shader(const char* vertex_shader, const char* fragment_shader){
+static unsigned int create_shader(const char* vertex_shader, const char* fragment_shader){
 
     unsigned int prog = glCreateProgram();
     assert(prog && "Failed to create shader program");
 
-    unsigned int vs   = Compile_Shader(GL_VERTEX_SHADER,vertex_shader);
+    unsigned int vs   = compile_shader(GL_VERTEX_SHADER,vertex_shader);
     assert(vs && "vertex shader compilation failed.");
     
-    unsigned int fs   = Compile_Shader(GL_FRAGMENT_SHADER,fragment_shader);
+    unsigned int fs   = compile_shader(GL_FRAGMENT_SHADER,fragment_shader);
     assert(fs && "fragment shader compilation failed.");
 
     glAttachShader(prog, vs);
@@ -140,29 +183,11 @@ static unsigned int Create_Shader(const char* vertex_shader, const char* fragmen
 
 }
 
-const char *vert_shader_src = "\
-#version 150 core\n\
-in vec3 in_Position;\n\
-uniform mat4 u_MVP;\n\
-void main() {\n\
-    gl_Position = u_MVP * vec4(in_Position, 1.0);\n\
-}\n\
-";
-
-const char *frag_shader_src = "\
-#version 150 core\n\
-out vec4 out_Color;\n\
-void main() {\n\
-    out_Color = vec4(0.0, 0.8, 1.0, 1.0);\n\
-}\n\
-";
-
-
 /*
  * Basic Initialization
  */
-int Initialize()
-{
+int initialize(){
+
     // Initialize SDL Video
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
         fprintf(stderr, "Failed to initialize SDL video\n");
@@ -176,7 +201,7 @@ int Initialize()
         SDL_WINDOWPOS_CENTERED,
         640, 480,
         SDL_WINDOW_OPENGL);
-    if (window == NULL) {
+    if (window == NULL){
         fprintf(stderr, "Failed to create main window\n");
         SDL_Quit();
         return 1;
@@ -212,9 +237,9 @@ int Initialize()
         return 1;
     }
 
-    InitShaders();
-    InitGeometry();
-   //  InitTextures();
+    init_shaders();
+    init_geometry();
+   //  init_textures();
 
     return 0;
 }
@@ -222,29 +247,39 @@ int Initialize()
 /*
  * Initialize Shaders
  */
-int InitShaders()
-{
-    
+int init_shaders(){
+
+    char* vert_shader_src = read_file("../res/shaders/vertex.glsl");
+    char* frag_shader_src = read_file("../res/shaders/fragment.glsl");
+
+    if (!vert_shader_src || !frag_shader_src) {
+        fprintf(stderr, "failed shader loadig (init_shader)\n");
+    }
+
     glGenVertexArrays(1, &vao);
     glBindVertexArray(vao);
 
     // create & Compile vertex shader
-    shader_prog = Create_Shader(vert_shader_src, frag_shader_src);
+    shader_prog = create_shader(vert_shader_src, frag_shader_src);
     if (!shader_prog) {
         fprintf(stderr, "Shader program creation failed.\n");
         return 1;
     }
-
+    GLenum err;
+    while ((err = glGetError()) != GL_NO_ERROR) {
+        printf("OpenGL error: %d\n", err);
+    }
     glUseProgram(shader_prog);
-    
-      return 0;
+    free(vert_shader_src);
+    free(frag_shader_src);
+
+    return 0;
 }
 
 /*
  * Initialize Geometry
  */
-int InitGeometry()
-{
+int init_geometry(){
     // Populate vertex buffer
     glGenBuffers(1, &vbo);
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
@@ -276,8 +311,8 @@ int InitGeometry()
 /*
  * Initialize textures
 
-int InitTextures()
-{
+int init_textures(){
+
     glGenTextures(1, &tex);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, tex);
@@ -298,8 +333,8 @@ int InitTextures()
 /*
  * Free resources
  */
-int Cleanup()
-{
+int cleanup(){
+
     glUseProgram(0);
     glDisableVertexAttribArray(0);
     glDeleteProgram(shader_prog);
@@ -317,8 +352,8 @@ int Cleanup()
  * Render a frame
  */
 
-int Update()
-{
+int update(){
+
     glClearColor(0.1f, 0.1f, 0.15f, 1.0f);
     glEnable(GL_DEPTH_TEST);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -329,24 +364,25 @@ int Update()
     static float angle = 0.0f;
     angle += 0.01f;
 
-    float proj[16], rot[16], mvp[16];
-    Perspective(proj, 45.0f * M_PI / 180.0f, 640.0f/480.0f, 0.1f, 100.0f);
-    RotateY(rot, angle);
+    int width, height;
+    SDL_GetWindowSize(window, &width, &height);
+    float aspect = (float)width / (float)height;
 
-    // Multiply MVP = proj * rot
-    // Naive 4x4 matrix multiply
-    for (int row = 0; row < 4; ++row) {
-        for (int col = 0; col < 4; ++col) {
-            mvp[row * 4 + col] = 0.0f;
-            for (int k = 0; k < 4; ++k) {
-                mvp[row * 4 + col] += proj[row * 4 + k] * rot[k * 4 + col];
-            }
-        }
-    }
+    float proj[16], model[16], mvp[16], view[16], view_model[16];
+    perspective(proj, 45.0f * M_PI / 180.0f, aspect, 0.1f, 100.0f);
+    
+    translate(view, 0.0f, 0.0f, -3.0f);
+    rotate_Y(model, angle);
+
+     // MVP = Proj * View * Model
+    multiply_matrices(view_model, view, model);
+    multiply_matrices(mvp, proj, view_model);
 
     GLint loc = glGetUniformLocation(shader_prog, "u_MVP");
-    glUniformMatrix4fv(loc, 1, GL_FALSE, mvp);
-
+    if (loc != -1) {
+        glUniformMatrix4fv(loc, 1, GL_FALSE, mvp);
+    }
+    
     glDrawElements(GL_LINES, sizeof(cube_indices)/sizeof(GLuint), GL_UNSIGNED_INT, 0);
 
     SDL_GL_SwapWindow(window);
@@ -356,12 +392,12 @@ int Update()
 /*
  * Program entry point
  */
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]){
+
     int should_run;
 
     printf("Initializing...\n");
-    if (Initialize()) {
+    if (initialize()) {
         return 1;
     }
 
@@ -375,10 +411,10 @@ int main(int argc, char *argv[])
             }
         }
 
-        Update();
+        update();
     }
 
     printf("Exiting...\n");
-    Cleanup();
+    cleanup();
     return 0;
 }
