@@ -78,44 +78,11 @@ m[14] = tz;
 
 
 
-const GLfloat cube_verts[] = {
-
-    -0.5f, -0.5f, 0.5f,
-     0.5f, -0.5f, 0.5f,
-     0.5f,  0.5f, 0.5f,
-    -0.5f,  0.5f, 0.5f,
-
-    -0.5f, -0.5f, -0.5f,
-     0.5f, -0.5f, -0.5f,
-     0.5f,  0.5f, -0.5f,
-    -0.5f,  0.5f, -0.5f,
-
-    -0.5f,  0.5f,  0.5f,
-     0.5f,  0.5f,  0.5f,
-     0.5f,  0.5f, -0.5f,
-    -0.5f,  0.5f, -0.5f,
-
-    -0.5f, -0.5f,  0.5f,
-     0.5f, -0.5f,  0.5f,
-     0.5f, -0.5f, -0.5f,
-    -0.5f, -0.5f, -0.5f,
-
-     0.5f, -0.5f,  0.5f,
-     0.5f, -0.5f, -0.5f,
-     0.5f,  0.5f, -0.5f,
-     0.5f,  0.5f,  0.5f,
-
-    -0.5f, -0.5f,  0.5f,
-    -0.5f, -0.5f, -0.5f,
-    -0.5f,  0.5f, -0.5f,
-    -0.5f,  0.5f,  0.5f
+const GLfloat verts[] = {
 };
 
-const GLuint cube_indices[] = {
+const GLuint indices[] = {
 
-    0, 1, 1, 2, 2, 3, 3, 0,
-    4, 5, 5, 6, 6, 7, 7, 4,
-    0, 4, 1, 5, 2, 6, 3, 7
 };
 
 char *read_file(const char* filepath){
@@ -300,12 +267,12 @@ int init_geometry(){
     // Populate vertex buffer
     glGenBuffers(1, &vbo);
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(cube_verts), cube_verts, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STATIC_DRAW);
 
     // Populate element buffer
     glGenBuffers(1, &ebo);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(cube_indices), cube_indices, GL_STATIC_DRAW);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
 
     // Bind vertex position attribute
     GLint pos_attr_loc = glGetAttribLocation(shader_prog, "in_Position");
@@ -380,28 +347,6 @@ int update(){
     glBindVertexArray(vao);
     glUseProgram(shader_prog);
 
-    static float angle = 0.0f;
-    angle += 0.01f;
-
-
-    float aspect = (float)width / (float)height;
-
-    float proj[16], model[16], mvp[16], view[16], view_model[16];
-    perspective(proj, 45.0f * M_PI / 180.0f, aspect, 0.1f, 100.0f);
-    
-    translate(view, 0.0f, 0.0f, -3.0f);
-    rotate_Y(model, angle);
-
-     // MVP = Proj * View * Model
-    multiply_matrices(view_model, view, model);
-    multiply_matrices(mvp, proj, view_model);
-
-    GLint loc = glGetUniformLocation(shader_prog, "u_MVP");
-    if (loc != -1) {
-        glUniformMatrix4fv(loc, 1, GL_FALSE, mvp);
-    }
-    
-    glDrawElements(GL_LINES, sizeof(cube_indices)/sizeof(GLuint), GL_UNSIGNED_INT, 0);
     glDrawArrays(GL_POINTS, 0, 1);
     SDL_GL_SwapWindow(window);
     return 0;
