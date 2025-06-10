@@ -6,7 +6,7 @@
 #include<assert.h>
 #include<string.h>
 #include <math.h>
-
+#include<cglm/cglm.h>
 
 int initialize();
 int init_shaders();
@@ -386,23 +386,32 @@ int update(){
 
     float aspect = (float)width / (float)height;
 
-    float proj[16], model[16], mvp[16], view[16], view_model[16];
-    perspective(proj, 45.0f * M_PI / 180.0f, aspect, 0.1f, 100.0f);
-    
-    translate(view, 0.0f, 0.0f, -3.0f);
-    rotate_Y(model, angle);
+    mat4 proj, model, view, view_model, mvp;
 
-     // MVP = Proj * View * Model
-    multiply_matrices(view_model, view, model);
-    multiply_matrices(mvp, proj, view_model);
+    // init matrices to identity
+    glm_mat4_identity(proj);
+    glm_mat4_identity(model);
+    glm_mat4_identity(view);
+    // perspective projection
+    glm_perspective(glm_rad(45.0f), aspect, 0.1f, 100.0f, proj);//projection matrix
+    glm_translate(view, (vec3){0.0f, 0.0f, -3.0f});//view matrix
+
+    glm_rotate_y(model, angle, model);//model matrix, rotates cube around y axis 
+    
+    // mvp = projection * view * model
+    glm_mat4_mul(view, model, mvp);//view * model
+    glm_mat4_mul(proj, mvp, mvp);//proj * temp
+
 
     GLint loc = glGetUniformLocation(shader_prog, "u_MVP");
     if (loc != -1) {
-        glUniformMatrix4fv(loc, 1, GL_FALSE, mvp);
+        glUniformMatrix4fv(loc, 1, GL_FALSE, (float *)mvp);
     }
     
     glDrawElements(GL_LINES, sizeof(cube_indices)/sizeof(GLuint), GL_UNSIGNED_INT, 0);
-    glDrawArrays(GL_POINTS, 0, 1);
+    //glDrawElements(GL_LINES, sizeof(cube_indices)/sizeof(unsigned int), GL_UNSIGNED_INT, 0);
+
+    //glDrawArrays(GL_POINTS, 0, 1);
     SDL_GL_SwapWindow(window);
     return 0;
 }
